@@ -1,0 +1,61 @@
+---
+- name: Install Instana Agent on RHEL9
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    instana_tarball: /opt/instana-agent-linux-64bit.tar.gz
+    install_path: /opt/instana
+    agent_exec: "{{ install_path }}/agent/instana-agent"
+
+  tasks:
+
+    - name: Ensure install directory exists
+      file:
+        path: "{{ install_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy Instana Agent tarball to target VM
+      copy:
+        src: "{{ instana_tarball }}"
+        dest: "{{ install_path }}/instana-agent-linux-64bit.tar.gz"
+        mode: '0755'
+
+    - name: Extract Instana Agent
+      unarchive:
+        src: "{{ install_path }}/instana-agent-linux-64bit.tar.gz"
+        dest: "{{ install_path }}"
+        remote_src: yes
+
+    - name: Ensure agent executable is executable
+      file:
+        path: "{{ agent_exec }}"
+        mode: '0755'
+
+    - name: Create systemd service for Instana Agent
+      copy:
+        dest: /etc/systemd/system/instana-agent.service
+        content: |
+          [Unit]
+          Description=Instana Agent
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart={{ agent_exec }}
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Enable and start Instana Agent service
+      systemd:
+        name: instana-agent
+        enabled: yes
+        state: started
