@@ -1,0 +1,77 @@
+---
+- name: Install Instana Agent via setup_agent.sh (IAIM Embedded, Non-Interactive)
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Default values (สามารถ override ผ่าน Catalog dialog)
+    instana_agent_key: "{{ dialog_instana_agent_key | default('hQUUlC0qF9BP8yEu98H59H') }}"
+    instana_agent_name: "{{ dialog_instana_agent_name | default('KlCtr5DRRFR4YrWtj9Yimw') }}"
+    instana_agent_host: "{{ dialog_instana_agent_host | default('10.200.124.235:1444') }}"
+    agent_type: "{{ dialog_agent_type | default('dynamic') }}"
+    setup_script_path: /tmp/setup_agent.sh
+
+  tasks:
+
+    - name: Check if curl is installed
+      command: which curl
+      register: curl_check
+      ignore_errors: yes
+
+    - name: Fail if curl is not installed
+      fail:
+        msg: "curl is required but not installed on this host"
+      when: curl_check.rc != 0
+
+    - name: Check if tar is installed
+      command: which tar
+      register: tar_check
+      ignore_errors: yes
+
+    - name: Fail if tar is not installed
+      fail:
+        msg: "tar is required but not installed on this host"
+      when: tar_check.rc != 0
+
+    - name: Check if Java is installed
+      command: java -version
+      register: java_check
+      ignore_errors: yes
+
+    - name: Fail if Java is not installed
+      fail:
+        msg: "Java 11 is required but not installed on this host"
+      when: java_check.rc != 0
+
+    - name: Download Instana setup script
+      get_url:
+        url: https://setup.instana.io/agent
+        dest: "{{ setup_script_path }}"
+        mode: '0700'
+
+    - name: Run Instana Agent setup script non-interactive
+      command: >
+        /tmp/setup_agent.sh
+        -a {{ instana_agent_key }}
+        -d {{ instana_agent_name }}
+        -t {{ agent_type }}
+        -e {{ instana_agent_host }}
+        -y
+      become: yes
+      register: agent_install
+      ignore_errors: no
+
+    - name: Show installation result
+      debug:
+        msg: "{{ agent_install.stdout }}"
+
+    - name: Verify Instana Agent service is running
+      command: systemctl status instana-agent
+      register: agent_status
+      ignore_errors: yes
+
+    - name: Show service status
+      debug:
+        msg: "{{ agent_status.stdout }}"
