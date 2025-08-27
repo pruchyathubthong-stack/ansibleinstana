@@ -1,0 +1,71 @@
+---
+- name: Provision Instana Agent on IAIM localhost
+  hosts: localhost
+  connection: local           # รัน playbook บนเครื่อง IAIM เอง
+  become: yes
+  gather_facts: yes
+
+  vars:
+    instana_tarball: "{{ instana_tarball_path | default('/opt/instana-agent-linux-64bit.tar.gz') }}"
+    install_path: "{{ instana_install_path | default('/opt/instana') }}"
+
+  tasks:
+
+    - name: Ensure install directory exists
+      file:
+        path: "{{ install_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Extract Instana Agent
+      unarchive:
+        src: "{{ instana_tarball }}"
+        dest: "{{ install_path }}"
+        remote_src: yes
+
+    - name: Find Instana agent executable
+      find:
+        paths: "{{ install_path }}"
+        patterns: "instana-agent"
+        file_type: file
+      register: agent_file
+
+    - name: Fail if agent binary not found
+      fail:
+        msg: "Instana agent binary not found under {{ install_path }}"
+      when: agent_file.files | length == 0
+
+    - name: Set agent_exec path dynamically
+      set_fact:
+        agent_exec: "{{ agent_file.files[0].path }}"
+
+    - name: Ensure agent executable is executable
+      file:
+        path: "{{ agent_exec }}"
+        mode: '0755'
+
+    - name: Create systemd service for Instana Agent
+      copy:
+        dest: /etc/systemd/system/instana-agent.service
+        content: |
+          [Unit]
+          Description=Instana Agent
+          After=network.target
+
+          [Service]
+          Type=simple
+          ExecStart={{ agent_exec }}
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Enable and start Instana Agent service
+      systemd:
+        name: instana-agent
+        enabled: yes
+        state: started
